@@ -15,6 +15,8 @@ import qualified Language.HaLex.Ndfa as HNA
 import qualified Language.HaLex.RegExp as HRE
 import qualified Language.HaLex.RegExp2Fa as HRE2HA
 
+import Regex
+import ParseRegex
 
 
 -- Function type
@@ -53,10 +55,10 @@ instance Monoid Function where
 data DFA at = DFA { nStates :: Int , s0 :: Int , accepting :: IntSet , delta :: at -> Function }
 
 buildDFA :: (Ix at) => HRE.RegExp at -> DFA at
-buildDFA re = buildFromDFA (HRE2HA.regExp2Dfa re)
+buildDFA re = buildFromHDA (HRE2HA.regExp2Dfa re)
 
-buildFromDFA :: (Ix at) => HDA.Dfa [Int] at -> DFA at
-buildFromDFA (HDA.Dfa v s s0 sa d) = DFA n s0' sa' delta
+buildFromHDA :: (Ix at) => HDA.Dfa [Int] at -> DFA at
+buildFromHDA (HDA.Dfa v s s0 sa d) = DFA n s0' sa' delta
     where 
         n          = length s
         s0'        = getIndex s0
@@ -64,16 +66,22 @@ buildFromDFA (HDA.Dfa v s s0 sa d) = DFA n s0' sa' delta
         sa'        = fromList $ map getIndex sa
         d' a state = getIndex $ d (s!!state) a
         getIndex e = case elemIndex e s of 
-                        Just i  -> i
-                        Nothing -> undefined
+                          Just i  -> i
+                          Nothing -> undefined
 
 -- Regular Expressions
 
 stringFromList = foldl' (|>) empty
 buildString dfa str = stringFromList (map (Elem dfa) $ str)
 
-matches :: DFA Char -> String -> Bool
-matches dfa str = member (evaluate (snd (measure (buildString dfa str))) 0) (accepting dfa)
+matchesDFA :: DFA Char -> String -> Bool
+matchesDFA dfa str = member (evaluate (snd (measure (buildString dfa str))) (s0 dfa)) (accepting dfa)
+
+compile :: String -> DFA Char
+compile = (buildDFA . regexToHRE . stringToRegex)
+
+matches :: String -> String -> Bool
+matches regex input = matchesDFA (compile regex) input
 
 
 -- Finger Tree
@@ -96,9 +104,3 @@ instance (Ix at) => Measured (Size, Function) (Elem at) where
 insert :: DFA Char -> Int -> Char -> FingerString -> FingerString
 insert dfa i c z = l >< (Elem dfa c <| r) where (l,r) = split (\(Size n,_) -> n>i) z
 
-sinal'' = (HRE.Literal 'a') `HRE.Or` (HRE.Literal 'b') `HRE.Or` HRE.Epsilon
-d = HRE.Literal 'd'
-re_int = sinal'' `HRE.Then` d `HRE.Then` (HRE.Star d)
-
-dfa_example = buildDFA re_int
-s = buildString dfa_example "bddddd"
