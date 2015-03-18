@@ -15,7 +15,7 @@ parseBracketLiteral = ((char '\\' >> oneOf "[]") <|> noneOf "[]" <?> "literal")
 
 parseCharClass :: Parser String
 parseCharClass = (try $ string "a-z" >> return ['a'..'z'])
-                 <|> (try $ string "A-Z" >> return ['A'..'z'])
+                 <|> (try $ string "A-Z" >> return ['A'..'Z'])
                  <|> (try $ string "0-9" >> return ['0'..'9'])
                  <|> many1 parseBracketLiteral
                  <?> "bracket literals"
@@ -53,10 +53,10 @@ parseBracket = do char '['
                   try $ lookAhead $ noneOf "^"
                   str <- many1 parseCharClass 
                   char ']'
-                  return $ AnyOf $ fromList (concat str)
+                  return $ OneOf $ fromList (concat str)
 
 parseToken :: Parser Regex
-parseToken = chainl (try parseUnion <|> try parseStar <|> try parseBracket <|> parseLiteral) (return Seq) Empty 
+parseToken = chainl (try parseUnion <|> try parseStar <|> try parseBracket <|> parseLiteral) (return Seq) Epsilon 
 
 parseRegex :: Parser Regex
 parseRegex = do regex <- parseToken

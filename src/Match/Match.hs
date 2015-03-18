@@ -3,7 +3,8 @@
 module Match where
 
 
-
+import Debug.Trace (trace)
+import Data.Char (chr)
 import Data.List (elemIndex, foldl') 
 import Data.Array (Array, Ix, array, bounds, indices, range, (!))
 import Data.Monoid (Monoid, mappend, mempty)
@@ -14,6 +15,7 @@ import qualified Language.HaLex.Dfa as HDA
 import qualified Language.HaLex.Ndfa as HNA
 import qualified Language.HaLex.RegExp as HRE
 import qualified Language.HaLex.RegExp2Fa as HRE2HA
+import qualified Language.HaLex.FaOperations as HFAO
 
 import Regex
 import ParseRegex
@@ -54,28 +56,24 @@ instance Monoid Function where
 
 data DFA at = DFA { nStates :: Int , s0 :: Int , accepting :: IntSet , delta :: at -> Function }
 
-buildDFA :: (Ix at) => HRE.RegExp at -> DFA at
-buildDFA re = buildFromHDA (HRE2HA.regExp2Dfa re)
+buildDFA :: HRE.RegExp Char -> DFA Char
+buildDFA = buildFromHDA . HDA.beautifyDfa . HFAO.ndfa2dfa . (forceVocabulary (map chr [0..256])) . HRE2HA.regExp2Ndfa
 
-buildFromHDA :: (Ix at) => HDA.Dfa [Int] at -> DFA at
-buildFromHDA (HDA.Dfa v s s0 sa d) = DFA n s0' sa' delta
+forceVocabulary :: String -> HNA.Ndfa at Char -> HNA.Ndfa at Char
+forceVocabulary v (HNA.Ndfa _ ss s t d) = HNA.Ndfa v ss s t d
+
+buildFromHDA :: (Ix at) => HDA.Dfa Int at -> DFA at
+buildFromHDA (HDA.Dfa v s s0 sa d) = DFA n s0 sa' delta
     where 
         n          = length s
-        s0'        = getIndex s0
-        delta      = tabulate n . d'
-        sa'        = fromList $ map getIndex sa
-        d' a state = getIndex $ d (s!!state) a
-        getIndex e = case elemIndex e s of 
-                          Just i  -> i
-                          Nothing -> undefined
+        delta c    = tabulate n ((flip d) c)
+        sa'        = fromList $ sa
 
 -- Regular Expressions
 
-stringFromList = foldl' (|>) empty
-buildString dfa str = stringFromList (map (Elem dfa) $ str)
 
 matchesDFA :: DFA Char -> String -> Bool
-matchesDFA dfa str = member (evaluate (snd (measure (buildString dfa str))) (s0 dfa)) (accepting dfa)
+matchesDFA dfa = (accepts dfa) . (initialize dfa)
 
 compile :: String -> DFA Char
 compile = (buildDFA . regexToHRE . stringToRegex)
@@ -93,6 +91,9 @@ data Elem at = Elem { dfa :: DFA at , getElem :: at }
 data Size = Size { getSize :: Int } deriving (Eq, Ord, Show)
 
 
+instance Show (Elem Char) where
+    show = show . getElem
+
 instance Monoid Size where
     mempty = Size 0
     Size m `mappend` Size n = Size (m+n)
@@ -101,6 +102,23 @@ instance (Ix at) => Measured (Size, Function) (Elem at) where
     measure (Elem dfa a) = (Size 1, (delta dfa) a)
 
 
+initialize :: DFA Char -> String -> FingerString
+initialize dfa str = foldl' (|>) empty $ map (Elem dfa) $ str
+
 insert :: DFA Char -> Int -> Char -> FingerString -> FingerString
-insert dfa i c z = l >< (Elem dfa c <| r) where (l,r) = split (\(Size n,_) -> n>i) z
+insert dfa i c z = l >< (Elem dfa c <| r) 
+    where (l, r) = split (\(Size n, _) -> n > i) z
+
+modify :: DFA Char -> Int -> Char -> FingerString -> FingerString
+modify dfa i c z = l >< (Elem dfa c <| r) 
+    where (l', r) = split (\(Size n, _) -> n > i) z
+          l :> _ = viewr l'
+
+erase :: Int -> FingerString -> FingerString
+erase i z = l >< r
+    where (l', r) = split (\(Size n, _) -> n > i) z
+          l :> _ = viewr l'
+
+accepts :: DFA Char -> FingerString -> Bool
+accepts dfa = (flip member) (accepting dfa) . (flip evaluate) (s0 dfa) . snd . measure
 

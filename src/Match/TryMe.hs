@@ -1,22 +1,10 @@
 import Match
-
-warning :: String
-warning = "\
-\::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: \n\
-\::                                WARNING                                          :: \n\
-\::                                                                                 :: \n\
-\:: Due to restrictions in HaLeX, the characters you use in the regular expression  :: \n\
-\:: are the only ones you can test.                                                 :: \n\
-\:: That means that if your expression is \"(a|b)\", you can test if \"a\", \"abb\"       :: \n\
-\:: or \"b\" matches, but you can't test if \"c\" matches.                              :: \n\
-\:: This will be fixed soon.                                                        :: \n\
-\::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: \n"
-
+import ParseRegex
 
 initDFA :: IO (DFA Char)
-initDFA = do putStrLn warning
-             putStrLn "Type a regular expression:"
+initDFA = do putStrLn "Type a regular expression:"
              regex <- getLine
+             putStrLn $ show $ stringToRegex regex
              return $ compile regex
 
 interactDFA :: (DFA Char) -> IO ()
